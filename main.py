@@ -172,11 +172,12 @@ class VPNRenewInvoiceRequest(BaseModel):
 # -----------------------------
 # --- Вспомогательные функции ---
 # -----------------------------
+"""
 async def create_stars_invoice(user_id: int, title: str, payload: str, price_stars: int):
-    """
+    """"""
     Формирует объект invoice для Telegram WebApp
     price_stars — целое число (например 5000 для 50⭐)
-    """
+    """"""
     return {
         "title": title,
         "description": title,
@@ -184,6 +185,7 @@ async def create_stars_invoice(user_id: int, title: str, payload: str, price_sta
         "prices": [{"label": f"{price_stars // 100} ⭐", "amount": price_stars}],
         "payload": payload
     }
+"""
 
 # --- Эндпоинты ---
 
@@ -234,6 +236,26 @@ async def vpn_payment_success(payload: str):
 @app.get("/api/vpn/my/{tg_id}")
 async def vpn_my(tg_id: int):
     return await rq.get_my_vpns(tg_id)
+
+@app.post("/api/vpn/stars-invoice")
+async def vpn_stars_invoice(request: VPNInvoiceRequest):
+    user = await rq.add_user(request.tg_id, "user")
+    async with async_session() as session:
+        server = await session.scalar(select(ServersVPN).where(ServersVPN.idServerVPN == request.server_id))
+        if not server:
+            raise HTTPException(status_code=404, detail="Сервер не найден")
+
+    payload = f"vpn30days_{user.idUser}_{server.idServerVPN}"
+
+    return {
+        "title": "VPN на 30 дней",
+        "description": f"Доступ к VPN серверу {server.nameVPN} на 30 дней",
+        "currency": "XTR",
+        "prices": [
+            { "label": "30 дней", "amount": server.price }  # цена берётся из базы, 5000 = 50 ⭐
+        ],
+        "payload": payload
+    }
 
 # Продление VPN через Stars - генерация инвойса
 @app.post("/api/vpn/renew-invoice")
