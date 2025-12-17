@@ -193,19 +193,24 @@ async def vpn_servers():
     return await rq.get_servers()
 
 # Генерация инвойса для покупки VPN через Stars
-@app.post("/api/vpn/stars-invoice")
 async def vpn_stars_invoice(request: VPNInvoiceRequest):
     user = await rq.add_user(request.tg_id, "user")
-    payload = f"vpn30days_{user.idUser}_{request.server_id}"
+    async with async_session() as session:
+        server = await session.scalar(select(ServersVPN).where(ServersVPN.idServerVPN == request.server_id))
+        if not server:
+            raise HTTPException(status_code=404, detail="Сервер не найден")
 
-    # Цена 50⭐ = 50 * 100 = 5000 (целое число)
-    invoice = await create_stars_invoice(
-        user_id=request.tg_id,
-        title="VPN на 30 дней",
-        payload=payload,
-        price_stars=STARS_PRICE * 100
-    )
-    return invoice
+    payload = f"vpn30days_{user.idUser}_{server.idServerVPN}"
+
+    return {
+        "title": "VPN на 30 дней",
+        "description": f"Доступ к VPN серверу {server.nameVPN} на 30 дней",
+        "currency": "XTR",
+        "prices": [
+            { "label": "30 дней", "amount": server.price }  # цена из базы, 5000
+        ],
+        "payload": payload
+    }
 
 
 # После успешной оплаты Stars покупка VPN
