@@ -9,7 +9,7 @@ import requestsfile as rq
 # --- Настройки Stars ---
 STARS_PRICE = 50  # 50 stars за 30 дней VPN
 CURRENCY = "USD"  # Тестовая валюта
-PROVIDER_TOKEN = "токен_платежей"  # Токен Telegram Stars
+PROVIDER_TOKEN = "8423828272:AAHGuxxQEvTELPukIXl2eNL3p25fI9GGx0U"  # Токен Telegram Stars
 
 # --- FastAPI приложение ---
 @asynccontextmanager
