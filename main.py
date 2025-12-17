@@ -7,6 +7,8 @@ from sqlalchemy import select, update
 import requestsfile as rq
 from datetime import datetime, timedelta
 from typing import List
+import uuid
+from bot import create_stars_invoice
 
 # --- FastAPI приложение ---
 @asynccontextmanager
@@ -25,12 +27,86 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Настройки Stars ---
-STARS_PRICE = 50        # 50 Stars за 30 дней
-CURRENCY = "XTR"        # ⭐ Обязательно
+
+# ======================
+# PUBLIC
+# ======================
+
+@app.get("/api/vpn/servers")
+async def get_servers():
+    return await rq.get_servers()
+
+
+@app.get("/api/vpn/my/{tg_id}")
+async def my_vpns(tg_id: int):
+    return await rq.get_my_vpns(tg_id)
+
+
+# ======================
+# BUY VPN
+# ======================
+
+class BuyVPN(BaseModel):
+    tg_id: int
+    server_id: int
+
+
+@app.post("/api/vpn/stars-invoice")
+async def create_invoice(data: BuyVPN):
+    payload = f"buy:{data.tg_id}:{data.server_id}:{uuid.uuid4()}"
+
+    server = await rq.get_server_by_id(data.server_id)
+    if not server:
+        raise HTTPException(404, "Server not found")
+
+    invoice_url = await create_stars_invoice(
+        title=f"VPN {server['nameVPN']}",
+        description="VPN на 30 дней",
+        payload=payload,
+        amount_stars=server["price"]
+    )
+
+    return {"url": invoice_url, "payload": payload}
+
+
+@app.post("/api/vpn/payment-success")
+async def payment_success(payload: str):
+    await rq.activate_vpn_from_payload(payload)
+    return {"status": "ok"}
+
+
+# ======================
+# RENEW VPN
+# ======================
+
+class RenewVPN(BaseModel):
+    tg_id: int
+    vpn_key_id: int
+    months: int
+
+
+@app.post("/api/vpn/renew-invoice")
+async def renew_invoice(data: RenewVPN):
+    payload = f"renew:{data.tg_id}:{data.vpn_key_id}:{data.months}:{uuid.uuid4()}"
+    stars = data.months * 50
+
+    invoice_url = await create_stars_invoice(
+        title="Продление VPN",
+        description=f"Продление на {data.months} мес.",
+        payload=payload,
+        amount_stars=stars
+    )
+
+    return {"url": invoice_url, "payload": payload}
+
+
+@app.post("/api/vpn/renew-success")
+async def renew_success(payload: str):
+    await rq.renew_vpn_from_payload(payload)
+    return {"status": "ok"}
+
 
 # --- MODELS REQUESTS ---
-
 class TypeVPNCreate(BaseModel):
     nameType: str
     descriptionType: str
@@ -159,6 +235,8 @@ async def admin_delete_server(server_id: int):
 
 
 
+
+"""
 # --- Модели запроса ---
 class VPNInvoiceRequest(BaseModel):
     tg_id: int
@@ -169,23 +247,6 @@ class VPNRenewInvoiceRequest(BaseModel):
     vpn_key_id: int
     months: int = 1
     
-# -----------------------------
-# --- Вспомогательные функции ---
-# -----------------------------
-"""
-async def create_stars_invoice(user_id: int, title: str, payload: str, price_stars: int):
-    """"""
-    Формирует объект invoice для Telegram WebApp
-    price_stars — целое число (например 5000 для 50⭐)
-    """"""
-    return {
-        "title": title,
-        "description": title,
-        "currency": CURRENCY,
-        "prices": [{"label": f"{price_stars // 100} ⭐", "amount": price_stars}],
-        "payload": payload
-    }
-"""
 
 # --- Эндпоинты ---
 
@@ -193,26 +254,6 @@ async def create_stars_invoice(user_id: int, title: str, payload: str, price_sta
 @app.get("/api/vpn/servers")
 async def vpn_servers():
     return await rq.get_servers()
-
-# Генерация инвойса для покупки VPN через Stars
-async def vpn_stars_invoice(request: VPNInvoiceRequest):
-    user = await rq.add_user(request.tg_id, "user")
-    async with async_session() as session:
-        server = await session.scalar(select(ServersVPN).where(ServersVPN.idServerVPN == request.server_id))
-        if not server:
-            raise HTTPException(status_code=404, detail="Сервер не найден")
-
-    payload = f"vpn30days_{user.idUser}_{server.idServerVPN}"
-
-    return {
-        "title": "VPN на 30 дней",
-        "description": f"Доступ к VPN серверу {server.nameVPN} на 30 дней",
-        "currency": "XTR",
-        "prices": [
-            { "label": "30 дней", "amount": server.price }  # цена из базы, 5000
-        ],
-        "payload": payload
-    }
 
 
 # После успешной оплаты Stars покупка VPN
@@ -237,6 +278,8 @@ async def vpn_payment_success(payload: str):
 async def vpn_my(tg_id: int):
     return await rq.get_my_vpns(tg_id)
 
+
+# Генерация инвойса для покупки VPN через Stars
 @app.post("/api/vpn/stars-invoice")
 async def vpn_stars_invoice(request: VPNInvoiceRequest):
     user = await rq.add_user(request.tg_id, "user")
@@ -295,3 +338,4 @@ async def vpn_renew_success(payload: str):
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+"""
