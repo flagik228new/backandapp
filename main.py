@@ -3,9 +3,10 @@ from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from models import init_db, async_session, VPNKey, TypesVPN, CountriesVPN, ServersVPN
-from sqlalchemy import select
+from sqlalchemy import select, update
 import requestsfile as rq
-from bot import create_stars_invoice
+from datetime import datetime, timedelta
+from typing import List
 
 # --- FastAPI приложение ---
 @asynccontextmanager
@@ -26,8 +27,7 @@ app.add_middleware(
 
 # --- Настройки Stars ---
 STARS_PRICE = 50        # 50 Stars за 30 дней
-CURRENCY = "XTR"        # ← ОБЯЗАТЕЛЬНО для Telegram Stars
-PROVIDER_TOKEN = ""     # ← ПУСТО! для Stars
+CURRENCY = "XTR"        # ⭐ Обязательно
 
 # --- MODELS REQUESTS ---
 
@@ -180,17 +180,15 @@ async def vpn_servers():
 @app.post("/api/vpn/stars-invoice")
 async def vpn_stars_invoice(request: VPNInvoiceRequest):
     user = await rq.add_user(request.tg_id, "user")
+    payload = f"vpn_{user.idUser}_{request.server_id}"
 
-    payload = f"vpn30days_{user.idUser}_{request.server_id}"
-
-    slug = await create_stars_invoice(
-        user_id=request.tg_id,
-        title="VPN на 30 дней",
-        payload=payload,
-        price_stars=50
-    )
-
-    return {"slug": slug}
+    return {
+        "title": "VPN на 30 дней",
+        "description": "Доступ к VPN на 30 дней",
+        "currency": CURRENCY,
+        "prices": [{"label": "VPN 30 дней", "amount": STARS_PRICE}],
+        "payload": payload
+    }
 
 
 # После успешной оплаты Stars покупка VPN
@@ -218,7 +216,6 @@ async def vpn_my(tg_id: int):
 @app.post("/api/vpn/renew-invoice")
 async def vpn_renew_invoice(request: VPNRenewInvoiceRequest):
     user = await rq.add_user(request.tg_id, "user")
-
     async with async_session() as session:
         vpn_key = await session.scalar(
             select(VPNKey).where(
@@ -227,25 +224,18 @@ async def vpn_renew_invoice(request: VPNRenewInvoiceRequest):
                 VPNKey.is_active == True
             )
         )
-
         if not vpn_key:
             raise HTTPException(status_code=404, detail="VPN ключ не найден")
 
     months = max(1, request.months)
     stars_amount = STARS_PRICE * months
-
-    payload = f"renew:{user.idUser}:{vpn_key.id}:{months}"
+    payload = f"renew_{user.idUser}_{vpn_key.id}_{months}"
 
     return {
         "title": f"Продление VPN на {months} мес.",
         "description": f"Продление доступа к VPN на {months} месяц(ев)",
-        "currency": "XTR",
-        "prices": [
-            {
-                "label": f"{months} мес.",
-                "amount": stars_amount
-            }
-        ],
+        "currency": CURRENCY,
+        "prices": [{"label": f"{months} мес.", "amount": stars_amount}],
         "payload": payload
     }
 
