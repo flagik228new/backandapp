@@ -79,7 +79,14 @@ async def buy_vpn(tg_id: int, server_id: int, outline_api_url: str) -> dict:
         await session.commit()
         await session.refresh(subscription)
 
-        return {"vpn_key": vpn_key.access_data, "expires_at": vpn_key.expires_at.isoformat()}
+        # payload для Telegram invoice
+        payload = f"vpn30days_{user.idUser}_{server.idServerVPN}"
+
+        return {
+            "vpn_key": vpn_key.access_data,
+            "expires_at": vpn_key.expires_at.isoformat(),
+            "payload": payload
+        }
 
 
 # --- Список VPN пользователя ---
@@ -98,7 +105,9 @@ async def get_my_vpns(tg_id: int) -> List[dict]:
         result = []
         for sub, key in subscriptions:
             result.append({
+                "vpn_key_id": key.id,
                 "server_id": key.idServerVPN,
+                "serverName": (await session.get(ServersVPN, key.idServerVPN)).nameVPN,
                 "access_data": key.access_data,
                 "expires_at": key.expires_at.isoformat(),
                 "is_active": key.is_active
@@ -129,7 +138,15 @@ async def renew_vpn(tg_id: int, vpn_key_id: int, months: int = 1) -> dict:
                               .values(expires_at=new_expiry, status="active"))
 
         await session.commit()
-        return {"vpn_key": vpn_key.access_data, "new_expires_at": new_expiry.isoformat()}
+
+        # payload для invoice продления
+        payload = f"renew_{user.idUser}_{vpn_key.id}_{months}"
+
+        return {
+            "vpn_key": vpn_key.access_data,
+            "new_expires_at": new_expiry.isoformat(),
+            "payload": payload
+        }
     
     
     

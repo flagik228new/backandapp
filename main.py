@@ -168,6 +168,22 @@ class VPNRenewInvoiceRequest(BaseModel):
     tg_id: int
     vpn_key_id: int
     months: int = 1
+    
+# -----------------------------
+# --- Вспомогательные функции ---
+# -----------------------------
+async def create_stars_invoice(user_id: int, title: str, payload: str, price_stars: int):
+    """
+    Формирует объект invoice для Telegram WebApp
+    price_stars — целое число (например 5000 для 50⭐)
+    """
+    return {
+        "title": title,
+        "description": title,
+        "currency": CURRENCY,
+        "prices": [{"label": f"{price_stars // 100} ⭐", "amount": price_stars}],
+        "payload": payload
+    }
 
 # --- Эндпоинты ---
 
@@ -180,15 +196,16 @@ async def vpn_servers():
 @app.post("/api/vpn/stars-invoice")
 async def vpn_stars_invoice(request: VPNInvoiceRequest):
     user = await rq.add_user(request.tg_id, "user")
-    payload = f"vpn_{user.idUser}_{request.server_id}"
+    payload = f"vpn30days_{user.idUser}_{request.server_id}"
 
-    return {
-        "title": "VPN на 30 дней",
-        "description": "Доступ к VPN на 30 дней",
-        "currency": CURRENCY,
-        "prices": [{"label": "VPN 30 дней", "amount": STARS_PRICE}],
-        "payload": payload
-    }
+    # Цена 50⭐ = 50 * 100 = 5000 (целое число)
+    invoice = await create_stars_invoice(
+        user_id=request.tg_id,
+        title="VPN на 30 дней",
+        payload=payload,
+        price_stars=STARS_PRICE * 100
+    )
+    return invoice
 
 
 # После успешной оплаты Stars покупка VPN
@@ -197,6 +214,7 @@ async def vpn_payment_success(payload: str):
     try:
         _, user_id, server_id = payload.split("_")
         user_id, server_id = int(user_id), int(server_id)
+
         servers = await rq.get_servers()
         server = next((s for s in servers if s["idServerVPN"] == server_id), None)
         if not server:
@@ -228,16 +246,17 @@ async def vpn_renew_invoice(request: VPNRenewInvoiceRequest):
             raise HTTPException(status_code=404, detail="VPN ключ не найден")
 
     months = max(1, request.months)
-    stars_amount = STARS_PRICE * months
+    stars_amount = STARS_PRICE * months * 100  # целое число для invoice
     payload = f"renew_{user.idUser}_{vpn_key.id}_{months}"
 
-    return {
+    invoice = {
         "title": f"Продление VPN на {months} мес.",
         "description": f"Продление доступа к VPN на {months} месяц(ев)",
         "currency": CURRENCY,
         "prices": [{"label": f"{months} мес.", "amount": stars_amount}],
         "payload": payload
     }
+    return invoice
 
 # После успешной оплаты Stars продление VPN
 @app.post("/api/vpn/renew-success")
